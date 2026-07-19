@@ -1,0 +1,23 @@
+# Exemple de lancement manuel (test local) - un conteneur = un VPS client
+# En prod, c'est l'API PHP qui genere ces parametres dynamiquement via le
+# Docker Engine API (socket /var/run/docker.sock), pas docker-compose.
+
+services:
+  vps-test-basic:
+    build: .
+    image: orinheberge/vps-base:latest
+    container_name: vps-client-demo
+    privileged: true          # necessaire pour systemd dans le conteneur
+    tmpfs:
+      - /run
+      - /run/lock
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    environment:
+      - SSH_PUBLIC_KEY=ssh-ed25519 AAAA... client@example.com
+      - HOSTNAME_VPS=vps-basic-demo
+    ports:
+      - "2201:22"             # port SSH expose cote hote, unique par client
+    mem_limit: 2g              # = offre Basic (RAM)
+    cpus: 1.0                  # = offre Basic (vCPU)
+    restart: unless-stopped
