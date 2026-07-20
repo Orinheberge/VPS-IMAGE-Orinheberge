@@ -1,0 +1,50 @@
+{
+    "_comment": "Egg VPS SSH - Orinheberge. A importer via Admin > Nests > Import Egg",
+    "meta": {
+        "version": "PTDL_v2",
+        "update_url": null
+    },
+    "exported_at": "2026-07-20T00:00:00+00:00",
+    "name": "VPS SSH (Ubuntu)",
+    "author": "admin@orinstone.deepstone.fr",
+    "description": "Acces VPS complet via SSH, base sur Ubuntu 22.04. Utilise pour les offres VPS Basic\/Medium\/Premium\/Mythic.",
+    "features": null,
+    "docker_images": {
+        "Ubuntu 22.04 (VPS SSH)": "ghcr.io\/TON-USER\/vps-ssh:latest"
+    },
+    "file_denylist": [],
+    "startup": "\/bin\/bash \/start.sh",
+    "config": {
+        "files": "{}",
+        "startup": "{\"done\": \"Demarrage de sshd sur le port\"}",
+        "logs": "{}",
+        "stop": "^C"
+    },
+    "scripts": {
+        "installation": {
+            "script": "#!\/bin\/bash\necho \"Image prebuilt (vps-ssh) - rien a installer.\"\nexit 0\n",
+            "container": "alpine:3.4",
+            "entrypoint": "ash"
+        }
+    },
+    "variables": [
+        {
+            "name": "Cle SSH publique",
+            "description": "Cle publique SSH du client. Si renseignee, desactive la connexion par mot de passe.",
+            "env_variable": "SSH_PUBLIC_KEY",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|string|max:1000"
+        },
+        {
+            "name": "Mot de passe root",
+            "description": "Utilise seulement si aucune cle SSH n'est fournie.",
+            "env_variable": "ROOT_PASSWORD",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|string|max:100"
+        }
+    ]
+}

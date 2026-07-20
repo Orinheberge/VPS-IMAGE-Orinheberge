@@ -1,80 +1,81 @@
-# vps-image
+# vps-ssh (egg Pterodactyl)
 
-Image Docker custom servant de base aux offres VPS (Basic / Medium / Premium / Mythic)
-d'Orinheberge. Ubuntu 22.04 + systemd + SSH, pensee pour etre pilotee par l'API VPS
-maison (pas Pterodactyl, pas l'API LXD).
+Image Docker + egg Pterodactyl fournissant un accès VPS via SSH (Ubuntu 22.04),
+pour les offres **VPS Basic / Medium / Premium / Mythic** d'Orinheberge.
 
-## Build
+Contrairement à une première approche envisagée (conteneur privilégié +
+systemd), cette version est pensée pour tourner **nativement sous Wings**
+(le daemon Pterodactyl), sans mode privilégié : `sshd` est lancé directement
+comme process principal, sur le port alloué par Pterodactyl.
 
-```bash
-docker build -t orinheberge/vps-base:latest .
-```
+## Fichiers
 
-## Lancement manuel (test)
+| Fichier              | Rôle                                                        |
+|-----------------------|-------------------------------------------------------------|
+| `Dockerfile`          | Image Ubuntu 22.04 + openssh-server + outils de base        |
+| `start.sh`            | Script de démarrage : injecte clé/mdp, lance `sshd`          |
+| `egg-vps-ssh.json`    | Egg Pterodactyl à importer (format `PTDL_v2`)                |
+| `018_vps_ssh_egg.sql` | Migration SQL : ajoute l'egg + les 4 offres dans le panel     |
 
-```bash
-docker run -d \
-  --name vps-client-demo \
-  --privileged \
-  --tmpfs /run --tmpfs /run/lock \
-  -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
-  -e SSH_PUBLIC_KEY="ssh-ed25519 AAAA... client@example.com" \
-  -e HOSTNAME_VPS="vps-basic-demo" \
-  -p 2201:22 \
-  --memory="2g" \
-  --cpus="1.0" \
-  orinheberge/vps-base:latest
-```
-
-Connexion :
+## 1. Build & push de l'image
 
 ```bash
-ssh -p 2201 root@IP_DU_HOST
+docker build -t ghcr.io/TON-USER/vps-ssh:latest .
+docker push ghcr.io/TON-USER/vps-ssh:latest
 ```
 
-## Variables d'environnement
+Wings (le daemon sur tes nodes Pterodactyl) doit pouvoir pull cette image —
+si le repo GitHub Container Registry est privé, il faut configurer un
+`docker login ghcr.io` sur chaque node, ou rendre l'image publique.
 
-| Variable         | Obligatoire | Description                                              |
-|------------------|:-----------:|------------------------------------------------------------|
-| `SSH_PUBLIC_KEY` | recommande  | Cle publique du client, injectee dans `~/.ssh/authorized_keys`. Desactive le mot de passe root si presente. |
-| `ROOT_PASSWORD`  | optionnel   | Mot de passe root, utilise seulement si `SSH_PUBLIC_KEY` n'est pas fourni. |
-| `HOSTNAME_VPS`   | optionnel   | Hostname applique au conteneur au demarrage.               |
+## 2. Import de l'egg dans Pterodactyl
 
-Si aucune des deux premieres n'est fournie, le compte root reste verrouille
-(pas d'acces possible) - a gerer cote API pour toujours envoyer au moins une cle
-ou un mot de passe genere automatiquement.
+1. Panel Pterodactyl → **Admin → Nests** → choisis (ou crée) un nest, ex. `VPS`
+2. **Import Egg** → uploade `egg-vps-ssh.json`
+3. Vérifie/édite l'image Docker si besoin (doit correspondre à celle pushée)
+4. Note le **Egg ID** et le **Nest ID** affichés (nécessaires à l'étape 3)
+
+## 3. Lier l'egg à ton panel (Orinheberge)
+
+Édite `018_vps_ssh_egg.sql` : remplace `<PANEL_EGG_ID>` et `<PANEL_NEST_ID>`
+par les valeurs notées à l'étape 2, ajuste `node_id` si tu utilises un node
+Pterodactyl dédié aux VPS, puis exécute la migration :
+
+```bash
+mysql -u ton_user -p ta_base < 018_vps_ssh_egg.sql
+```
+
+Les 4 offres (`vps-basic`, `vps-medium`, `vps-premium`, `vps-mythic`)
+apparaissent alors dans `products`, exactement comme tes offres existantes
+(Minecraft, FiveM, etc.) — la commande, la facturation et le cycle de vie
+(suspension/renouvellement) sont gérés par le code déjà en place, aucune
+logique supplémentaire à coder côté panel.
+
+## Variables d'egg (visibles/éditables par le client)
+
+| Variable         | Description                                                        |
+|-------------------|---------------------------------------------------------------------|
+| `SSH_PUBLIC_KEY`  | Clé publique SSH. Si renseignée, désactive la connexion par mot de passe. |
+| `ROOT_PASSWORD`   | Mot de passe root, utilisé seulement si aucune clé n'est fournie.    |
+
+Si ni l'une ni l'autre n'est fournie, `start.sh` génère un mot de passe
+aléatoire visible dans les logs/console du serveur (à récupérer et changer).
 
 ## Mapping resources par offre
 
-A appliquer via les flags `--memory` / `--cpus` (ou l'equivalent JSON de l'API
-Docker Engine : `Memory`, `NanoCpus`) au moment du `docker create`.
+| Offre        | vCPU | RAM   | Disque |
+|--------------|:----:|:-----:|:------:|
+| VPS Basic    | 1    | 2 Go  | 20 Go  |
+| VPS Medium   | 2    | 4 Go  | 40 Go  |
+| VPS Premium  | 4    | 8 Go  | 80 Go  |
+| VPS Mythic   | 8    | 16 Go | 160 Go |
 
-| Offre        | vCPU | RAM   | Disque (via `--storage-opt` ou quota volume) |
-|--------------|:----:|:-----:|:---------------------------------------------:|
-| VPS Basic    | 1    | 2 Go  | 20 Go                                         |
-| VPS Medium   | 2    | 4 Go  | 40 Go                                         |
-| VPS Premium  | 4    | 8 Go  | 80 Go                                         |
-| VPS Mythic   | 8    | 16 Go | 160 Go                                        |
+## Notes de sécurité
 
-## Notes de securite importantes
-
-- Le conteneur tourne en `--privileged` pour permettre a `systemd` de fonctionner
-  correctement (necessaire pour offrir une experience "VPS complet" avec
-  plusieurs services). Cela reduit l'isolation par rapport a une vraie VM ou a
-  LXC : un client root dans le conteneur a potentiellement plus de surface
-  d'attaque vis-a-vis de l'hote qu'avec un hyperviseur classique.
-- Limiter les risques : noyau a jour sur l'hote, `AppArmor`/`seccomp` par
-  defaut de Docker non desactives (le mode `--privileged` desactive
-  `seccomp`/`AppArmor` cote conteneur - a evaluer selon le niveau de confiance
-  que vous accordez a vos clients), et surveillance des conteneurs (`docker
-  stats`, alerting).
-- Chaque conteneur doit avoir un port SSH host unique (mappe dynamiquement par
-  l'API VPS lors de la creation) et idealement un reseau Docker dedie/isole
-  entre clients (`docker network create` par client ou VLAN, a definir selon
-  vos besoins).
-
-## Prochaine etape
-
-Ce repo fournit uniquement l'image. Le provisioning (creation/demarrage/arret/
-suppression des conteneurs, attribution des ports, generation des cles) est
-gere par l'API PHP maison, separee de ce repo.
+- Pas de mode `--privileged` requis : Wings applique ses limites CPU/RAM/disque
+  standard comme pour n'importe quel autre serveur du panel.
+- Le client a un accès root **dans le conteneur** (nécessaire pour un vrai
+  usage VPS : installer des paquets, gérer des services...). Il n'a pas accès
+  à l'hôte ni aux autres conteneurs — l'isolation Docker standard s'applique.
+- Le port SSH exposé correspond à l'allocation Pterodactyl du serveur (visible
+  et gérable depuis le panel, comme n'importe quel port de jeu).
