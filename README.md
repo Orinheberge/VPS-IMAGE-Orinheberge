@@ -79,3 +79,6 @@ aléatoire visible dans les logs/console du serveur (à récupérer et changer).
   à l'hôte ni aux autres conteneurs — l'isolation Docker standard s'applique.
 - Le port SSH exposé correspond à l'allocation Pterodactyl du serveur (visible
   et gérable depuis le panel, comme n'importe quel port de jeu).
+
+
+<!-- Security scan triggered at 2026-09-04 13:02:53 -->
